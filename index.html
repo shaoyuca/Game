@@ -1,0 +1,927 @@
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>game</title>
+
+    <script type="text/javascript" src="js/jquery-1.9.0.min.js"></script>
+    <script type="text/javascript" src="js/offset.js"></script>
+    <script type="text/javascript" src="js/reader.js"></script>
+    <script type="text/javascript" src="js/patterns.js"></script>
+
+    <script type="text/javascript">
+        var tip1 = "Left click to draw; Right click to erase\nHold the Ctrl key to drag and pan";
+        var tip2 = "Dragging\nPlease release the Ctrl key to return to the drawing mode";
+
+        var currentgamedata = null;  //current frame arry data
+        var nextgamedata = null;  //next frame arry data
+        var canvas; //canvas
+
+
+        var size; //single point size
+        var rowcount; 
+        var colcount; 
+        var speed; 
+        var border_color = "#000"; //cell color
+        var life_color;  //life color
+        var life_colors = new Array("#ee3b3b"); 
+        var life_color_cursor = 0; 
+        var empty_color = "#FFF"; // dead color
+
+        var running = false; 
+        var mousedrawing = false; 
+        var mousedrawtype; //true=drawing,false=erase
+        var step = 0; // reset steps
+
+        var dragging = false; // dragging...
+        var dragx = 0, dragy = 0;  //initial positions dragging
+        var draggingImg; //image in draggig
+
+        var inserting = false; 
+        var patterndata; //inserting img
+        var transparentinsert = false; 
+
+        var patterncanvas; //patterncanvas
+        var previewdata; //patterndata
+        var patterncurrentdata = null;
+        var patternnextdata = null;
+
+        $(function () {
+            //hostname 
+            if (top.location.hostname != self.location.hostname) {
+                self.location = "/";
+            }
+            else {
+                init();
+            }
+        });
+
+        //initializing
+        function init() {
+            canvas = document.getElementById("image");
+            if (!canvas.getContext) {
+                $("body").html("Your browser does not support HTML5, please change another one.");
+            }
+            else {
+                $("#imgcontainer").height($(window).height() - $("#toptoolpanel").height() - 2);
+                $("#imgcontainer").width($(window).width() - 2);
+                patterncanvas = document.getElementById("patterncanvas");
+                $("#btnstop").prop("disabled", true);
+                life_color = life_colors[life_color_cursor];
+                $("#btncolor").css("background-color", life_color);
+                $(canvas).css("cursor", "pointer");
+                canvas.title = tip1;// show how to drawing
+                if ($(window).width() > 500) loadmodels();
+                setspeed();
+                setsize();
+                reset();
+                draw();
+
+                //Import pattern
+                loadpatterntypes();
+                $("#patterntype")[0].selectedIndex = Math.floor(Math.random() * (patterntypes.length)); //randomly select
+                $("#txtpattern").val($("#patterntype").val());
+                previewdata = read($("#patterntype").val());
+                $("#patterncontainer").height($("#patterncontainer").width());
+                drawpatternpreview();
+                hidemask();
+
+
+                //canvas scale
+                $("#size").change(function () {
+                    setsize();
+                    draw();
+                    $("#container").focus();
+                });
+
+                //motion speed
+                $("#speed").change(function () {
+                    setspeed();
+                    $("#container").focus();
+                });
+
+                /*
+                $("#btnnext").click(function () {
+                    calcnext();
+                    draw();
+                    $("#container").focus();
+                });
+                */
+
+                //Start
+                $("#btnstart").click(function () {
+                    running = true;
+                    //按钮状态
+                    $("#btnstart").prop("disabled", true);
+                    //$("#btnnext").prop("disabled", true);
+                    $("#btnstop").prop("disabled", false);
+                    $("#models").prop("disabled", true);
+                    $("#btninit").prop("disabled", true);
+                    $("#size").prop("disabled", true);
+                    $("#btnpop").prop("disabled", true);
+                    //$("#container").focus();
+                    canvas.title = "";
+                    timer();
+                });
+
+                //Stop
+                $("#btnstop").click(function () {
+                    running = false;
+                    //按钮状态
+                    $("#btnstart").prop("disabled", false);
+                    $("#btnnext").prop("disabled", false);
+                    $("#btnstop").prop("disabled", true);
+                    $("#models").prop("disabled", false);
+                    $("#btninit").prop("disabled", false);
+                    $("#size").prop("disabled", false);
+                    $("#btnpop").prop("disabled", false);
+                    $("#container").focus();
+                    canvas.title = tip1;
+                });
+
+                //Initialization
+                $("#btninit").click(function () {
+                    reset();
+                    draw();
+                    $("#container").focus();
+                });
+
+                //showmasks
+                $("#btnpop").click(function () {
+                    showmask();
+                });
+
+                /*
+                $("#btncolor").click(function () {
+                    life_color_cursor++;
+                    if (life_color_cursor >= life_colors.length) life_color_cursor = 0;
+                    life_color = life_colors[life_color_cursor];
+                    $("#btncolor").css("background-color", life_color);
+                    nextgamedata = currentgamedata;
+                    currentgamedata = null;
+
+                    draw();
+                    $("#container").focus();
+                });
+                */
+
+                //patternchange
+                $("#patterntype").change(function () {
+                    //loadpatterntypes($(this).val());
+                    //loadpatternlist($(this).val());
+                    $("#txtpattern").val($("#patterntype").val());
+                    previewdata = read($("#patterntype").val());
+                    drawpatternpreview();
+
+                    //mousedrawing = true;                                                   
+                });
+
+                //loadpattern
+                $("#btnreload").click(function () {
+                    $("#txtpattern").val($("#patterntype").val());
+                    previewdata = read($("#patterntype").val());
+                    drawpatternpreview();
+                    
+                });
+
+                //insert pattern
+                $("#btninsert").click(function () {
+
+                    //create patterns on canvas
+                    patterndata = read($("#txtpattern").val());
+                    if (patterndata != null) {
+                        inserting = true;
+                        transparentinsert = false;
+                        canvas.title = "";
+                    }
+                    //patterncanvas
+                    hidemask();
+                });
+
+                //hidemask
+                $(".mask").click(function () {
+                    inserting = false;
+                    canvas.title = tip1;
+                    hidemask();
+                });
+
+                $(".poptoolpanel").click(function () {
+                    return false;
+                });
+
+          
+
+                //canvas drawing -> mousedown
+                $(canvas).mousedown(function (e) {
+                    if (!inserting)//if not in inserting
+                    {
+                        if (!running && e.ctrlKey) {
+                            //dragging
+                            $(canvas).css("cursor", "move");
+                            dragging = true;
+
+                            //coord recorded
+                            var coord = coordinate(e);
+                            dragx = coord.coord_X;
+                            dragy = coord.coord_Y;
+
+                            ////Save the current img, and display when dragging
+                            var drawarea = canvas.getContext('2d');
+                            draggingImg = drawarea.getImageData(0, 0, canvas.width, canvas.height);
+                        }
+
+                        else {
+                            //mousedrawing                            
+                            mousedrawing = true;
+
+                            if (e.which == 3) mousedrawtype = false; //Left click to draw; Right click to erase
+                            else mousedrawtype = true;
+
+                            //show next data frame
+                            var coord = coordinate(e); 
+                            var row = Math.floor(coord.coord_Y / size);
+                            var col = Math.floor(coord.coord_X / size);
+                            if (row < rowcount && col < colcount) {
+                                currentgamedata[row][col] = mousedrawtype;
+                                drawsingle(row, col, mousedrawtype);
+
+                            }
+                        }
+                    }
+                    
+                    return false; 
+                })
+                    //mouse up displaying
+                    .mouseup(function (e) {
+                        var coord = coordinate(e);
+                        if (inserting) {
+                            // finish inserting and show the next frame
+                            inserting = false;
+                            nextgamedata = currentgamedata;
+                            if (e.which != 3) {
+
+                                //cancel inserting if right click
+                                var mouserow = Math.floor(coord.coord_Y / size);
+                                var mousecol = Math.floor(coord.coord_X / size);
+                                var patternrowcount = patterndata.length;
+                                var patterncolcount = patterndata[0].length;
+
+                                //inserting img
+                                for (var i = 0; i < Math.min(patternrowcount, rowcount - mouserow); i++) {
+                                    for (var j = 0; j < Math.min(patterncolcount, colcount - mousecol); j++) {
+                                        //if (patterndata[i][j] || !transparentinsert)//如果透明则只绘制有生命点，不透明时两者都绘
+                                            nextgamedata[mouserow + i][mousecol + j] = patterndata[i][j];
+                                    }
+                                }
+                            }
+                            currentgamedata = null;
+                            draw();
+                            canvas.title = tip1;
+                        }
+                        else if (dragging) {
+
+                            //get dragging positions
+                            var rowdiff = Math.floor((coord.coord_Y - dragy) / size);
+                            var coldiff = Math.floor((coord.coord_X - dragx) / size);
+
+                            //give the dragging positions as next data
+                            nextgamedata = new Array();
+                            for (var i = 0; i < rowcount; i++) {
+                                nextgamedata[i] = new Array();
+                                for (var j = 0; j < colcount; j++) {
+                                    if (i - rowdiff >= 0 && i - rowdiff < rowcount && j - coldiff >= 0 && j - coldiff < colcount)
+                                        nextgamedata[i][j] = currentgamedata[i - rowdiff][j - coldiff];
+                                    else
+                                        nextgamedata[i][j] = false;
+                                }
+                            }
+                            currentgamedata = null;
+
+                            ////Users can modify these patterns on the canvas after inserting
+                            draw();
+                            dragging = false;
+                            $(canvas).css("cursor", "pointer");
+                        }
+
+                        else {
+                            mousedrawing = false;
+                        }
+                    })
+
+                    //mouse leave for cancelling
+                    .mouseleave(function (e) {
+                        if (dragging) {
+
+                            //mouse leave -> cancel dragging
+                            nextgamedata = currentgamedata;
+                            currentgamedata = null;
+                            draw();
+                            dragging = false;
+                            $(canvas).css("cursor", "pointer");
+                        }
+                        else {
+                            mousedrawing = false;
+                        }
+                    })
+
+                    //mouse moving 
+                    //when loading the pattern, the pattern will move with mouse 
+                    .mousemove(function (e) {
+                        var coord = coordinate(e); 
+                        if (inserting) {
+                            nextgamedata = currentgamedata;
+                            currentgamedata = null;
+                            draw();
+
+                            //drawing the pattern with mouse moving as semi-transparent
+                            ////current mouse positions (row + col)
+                            var mouserow = Math.floor(coord.coord_Y / size);
+                            var mousecol = Math.floor(coord.coord_X / size);
+                            var patternrowcount = patterndata.length;
+                            var patterncolcount = patterndata[0].length;
+                            var drawarea = canvas.getContext('2d');
+                            
+                            for (var i = 0; i < patternrowcount; i++) {
+                                for (var j = 0; j < patterncolcount; j++) {
+                                    if (patterndata[i][j]) {
+
+                                        //transparency
+                                        drawarea.globalAlpha = 0.6;
+                                        drawarea.fillStyle = life_color;
+                                        drawarea.fillRect((mousecol + j) * size + 1, (mouserow + i) * size + 1, size - 1, size - 1);
+                                    }
+                                    else if (!transparentinsert) {
+                                        drawarea.globalAlpha = 1;
+                                        drawarea.fillStyle = empty_color;
+                                        drawarea.fillRect((mousecol + j) * size + 1, (mouserow + i) * size + 1, size - 1, size - 1);
+                                    }                                   
+                                }
+                            }
+                            drawarea.globalAlpha = 1;
+                        }
+                        else if (dragging) {
+                            var drawarea = canvas.getContext('2d');
+                            drawarea.fillStyle = border_color;
+
+                            //empty the canvas for the following pattern inserting
+                            drawarea.fillRect(0, 0, canvas.width, canvas.height); 
+                            //drawing the pattern on the canvas (coordinates on canvas realted to pattern canvas)
+                            drawarea.putImageData(draggingImg, Math.floor((coord.coord_X - dragx) / size) * size, Math.floor((coord.coord_Y - dragy) / size) * size); 
+                        }
+                        else {
+
+                            //drawing
+                            if (mousedrawing) {
+                                var row = Math.floor(coord.coord_Y / size);
+                                var col = Math.floor(coord.coord_X / size);
+                                if (row < rowcount && col < colcount) {
+                                    currentgamedata[row][col] = mousedrawtype;
+                                    drawsingle(row, col, mousedrawtype);
+                                }
+                            }
+                        }
+                    })
+                    .bind('contextmenu', function () {
+                        return false;
+                    });
+
+                //Change the mouse style when pressing the Ctrl key
+                $(document).bind('keydown', function (event) {
+
+                    //running or dragging or mousedrawing or inserting, no change
+                    if (event.keyCode == 17 && !running && !dragging && !mousedrawing && !inserting) {
+                        $(canvas).css("cursor", "move");
+                        canvas.title = tip2;
+                    }
+                })
+                .bind('keyup', function (event) {
+                    if (event.keyCode == 17 && !running && !dragging && !mousedrawing && !inserting) {
+                        $(canvas).css("cursor", "pointer");
+                        canvas.title = tip1;
+                    }
+                });
+            }
+        }
+
+////////////////////////////////////////////
+//////////////functions////////////////////
+///////////////////////////////////////////
+
+        //loadmodels: None + SCM
+        function loadmodels() {
+            var models = $("#models")[0];
+            for (var i = 0; i < modellist.length; i++) {
+                models.options.add(new Option(modellist[i].name, "m" + i));
+            }
+        }
+
+        //setspeed
+        function setspeed() {
+            speed = parseInt($("#speed").val());
+        }
+
+        //showmask
+        function showmask() {
+            $(".mask").show();
+        }
+
+        //hidemask
+        function hidemask() {
+            $(".mask").hide();
+        }
+
+        //set scale
+        function setsize() {
+            var lastsize = size;
+            var lastrowcount = rowcount;
+            var lastcolcount = colcount;
+
+            size = parseInt($("#size").val());
+            //canvas head 
+            rowcount = Math.floor(($("#imgcontainer").height() - 5) / size);
+            colcount = Math.floor(($("#imgcontainer").width() - 5) / size);
+            //canvas size
+            canvas.height = size * rowcount + 1;
+            canvas.width = size * colcount + 1;
+            $(canvas).css("margin-top", ($("#imgcontainer").height() - canvas.height) / 2);
+
+            //if change scales with current data, scale teh current data to fit new canvas
+            if (currentgamedata != null) {
+
+            //calculate the difference between two canvas and apply to current data
+                var rowdiff = Math.ceil(Math.abs(rowcount - lastrowcount) / 2);
+                var coldiff = Math.ceil(Math.abs(colcount - lastcolcount) / 2);
+                nextgamedata = new Array();
+                for (var i = 0; i < rowcount; i++) {
+                    nextgamedata[i] = new Array();
+                    for (var j = 0; j < colcount; j++) {
+
+                        //if new scale > old scale, only show the center part (i + rowdiff)
+                        if (size > lastsize) {
+                            nextgamedata[i][j] = currentgamedata[i + rowdiff][j + coldiff];
+                        }
+
+                        //if new scale < old scale, copy the old data and leave blank around (i - rowdiff)
+                        else {
+                            if (i >= rowdiff && i < rowdiff + lastrowcount && j >= coldiff && j < coldiff + lastcolcount)
+                                nextgamedata[i][j] = currentgamedata[i - rowdiff][j - coldiff];
+                            else
+                                nextgamedata[i][j] = false;
+                        }
+                    }
+                }
+
+                currentgamedata = null;
+                var drawarea = canvas.getContext('2d');
+                //Complete background with border_color
+                drawarea.fillStyle = border_color; 
+                drawarea.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        //Choose tyoe
+        function reset() {
+            step = 0;
+            var type = $("#models").val();
+            currentgamedata = null;
+            nextgamedata = new Array();
+
+            //load SCM model
+            if (type.indexOf("m") == 0) {
+                var model = modellist[parseInt(type.substring(1))];
+                $("#size").val(model.size);
+                setsize();
+                var modeldata = readrle(model.data);
+                var modelrowcount = modeldata.length;
+                var modelcolcount = modeldata[0].length;
+                var top = Math.floor((rowcount - modelrowcount) / 2);
+                var left = Math.floor((colcount - modelcolcount) / 2);
+
+                //put the model pattern in the center of canvas (i/j- top/left)
+                for (var i = 0; i < rowcount; i++) {
+                    nextgamedata[i] = new Array();
+                    for (var j = 0; j < colcount; j++) {
+                        if (i >= top && i < top + modelrowcount && j >= left && j < left + modelcolcount) {
+                            nextgamedata[i][j] = modeldata[i - top][j - left];
+                        }
+                        else nextgamedata[i][j] = false;
+                    }
+                }
+            }
+
+            //None as default 
+            else { 
+                for (var i = 0; i < rowcount; i++) {
+                    nextgamedata[i] = new Array();
+                    for (var j = 0; j < colcount; j++) {
+                        nextgamedata[i][j] = false;
+                    }
+                }
+            }
+            var drawarea = canvas.getContext('2d');
+            drawarea.fillStyle = border_color; 
+            drawarea.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        //main algorithm GoL
+        function calcnext() {
+            var startTime = new Date();
+            nextgamedata = new Array();
+            for (var i = 0; i < rowcount; i++) {
+                nextgamedata[i] = new Array();
+                for (var j = 0; j < colcount; j++) {
+
+                    //ncount = 3 - generate life, 2 - no change, else - die
+                    var ncount = 0; 
+                    if (i != 0 && j != 0)
+                        if (currentgamedata[i - 1][j - 1]) ncount++;  //Upper left 1
+                    if (i != 0)
+                        if (currentgamedata[i - 1][j]) ncount++; //Upper 2
+                    if (i != 0 && j != colcount - 1)
+                        if (currentgamedata[i - 1][j + 1]) ncount++; //Upper right 3
+                    if (j != colcount - 1)
+                        if (currentgamedata[i][j + 1]) ncount++;  //Right 4
+                    if (i != rowcount - 1 && j != colcount - 1)
+                        if (currentgamedata[i + 1][j + 1]) ncount++; //Down right 5
+                    if (i != rowcount - 1)
+                        if (currentgamedata[i + 1][j]) ncount++; //Down 6
+                    if (i != rowcount - 1 && j != 0)
+                        if (currentgamedata[i + 1][j - 1]) ncount++; //Down left 7
+                    if (j != 0)
+                        if (currentgamedata[i][j - 1]) ncount++;  //Left 8
+
+                    // add
+                    if (ncount == 3) nextgamedata[i][j] = true;
+                    // No change
+                    else if (ncount == 2) nextgamedata[i][j] = currentgamedata[i][j];
+                    // die
+                    else nextgamedata[i][j] = false;
+                }
+            }
+        }
+
+        //drawing 
+        function draw() {
+            //var startTime = new Date();
+            var drawarea = canvas.getContext('2d');
+            for (var i = 0; i < rowcount; i++) {
+                for (var j = 0; j < colcount; j++) {
+
+                    //load pattern: change to  next data frame -> drawing
+                    if (currentgamedata == null || currentgamedata[i][j] != nextgamedata[i][j]) {
+                        if (nextgamedata[i][j]) {
+                            drawarea.fillStyle = life_color;
+                        }
+                        else {
+                            drawarea.fillStyle = empty_color;
+                        }
+
+                        //mouse clicking editing
+                        if (size <= 2)
+                            drawarea.fillRect(j * size, i * size, size, size);
+                        else
+                            drawarea.fillRect(j * size + 1, i * size + 1, size - 1, size - 1);
+                    }
+                }
+            }
+            currentgamedata = nextgamedata; //change to next frame
+            nextgamedata = null;
+        }
+
+        //draw single point (mouse clicking)
+        function drawsingle(row, col, type) {
+            var drawarea = canvas.getContext('2d');
+            if (type) drawarea.fillStyle = life_color;
+            else drawarea.fillStyle = empty_color;
+
+            if (size <= 2)
+                drawarea.fillRect(col * size, row * size, size, size);
+            else
+                drawarea.fillRect(col * size + 1, row * size + 1, size - 1, size - 1);
+        }
+
+        //running
+        
+        function timer() {
+            if (running) {
+                calcnext();
+                draw();
+                setTimeout(timer, speed);
+            }
+        }
+        
+
+        //load pattern types
+        function loadpatterntypes() {
+            var patterntypelist = $("#patterntype")[0];
+            patterntypelist.options.length = 0;
+            for (var i = 0; i < patterntypes.length; i++) {
+                patterntypelist.options.add(new Option(patterntypes[i].text, patterntypes[i].data));
+            }
+            $("#txtpattern").val($("#patterntype").val()); //加载第一个形状
+
+        }
+
+        //draw patternpreview
+        function drawpatternpreview() {
+            if (previewdata == null) return;
+
+            //load previewdata to calculate the container size
+            var rowcount = previewdata.length;
+            var colcount = previewdata[0].length;
+            var containerwidth = $("#patterncontainer").width();
+            var containerheight = $("#patterncontainer").height();
+
+            //calculate the pattern size
+            var psize = Math.min(Math.floor((containerwidth - 5) / colcount), Math.floor((containerheight - 5) / rowcount));
+            // pattern size : max = 16 min = 2
+            if (psize > 16) psize = 16;
+            else if (psize < 2) psize = 2;
+
+            //calculate pattern canvas size
+            var framerowcount = Math.floor((containerheight - 5) / psize);  
+            var framecolcount = Math.floor((containerwidth - 5) / psize);
+            patterncanvas.width = framecolcount * psize + 1;
+            patterncanvas.height = framerowcount * psize + 1;
+            $(patterncanvas).css("margin-top", (containerheight - patterncanvas.height) / 2);
+
+            //get patterncanvas context for inserting
+            var drawarea = patterncanvas.getContext('2d');
+            drawarea.fillStyle = border_color; 
+            drawarea.fillRect(0, 0, patterncanvas.width, patterncanvas.height);
+
+            //the pattern posiotion on the big canvas (start points)
+            var toprow = Math.floor((framerowcount - rowcount) / 2);
+            var leftcol = Math.floor((framecolcount - colcount) / 2);
+
+            //put template data on the canvas
+            for (var i = 0; i < framerowcount; i++) {
+                for (var j = 0; j < framecolcount; j++) {
+                    if (i >= toprow && i < toprow + rowcount && j >= leftcol && j < leftcol + colcount && previewdata[i - toprow][j - leftcol]) {
+
+                        drawarea.fillStyle = life_color;
+                    }
+                    else drawarea.fillStyle = empty_color;
+
+                    //mouse click on inserted pattern on the canvas for modifying 
+                    if (psize <= 2)
+                        drawarea.fillRect(j * psize, i * psize, psize, psize);
+                    else
+                        drawarea.fillRect(j * psize + 1, i * psize + 1, psize - 1, psize - 1);
+                }
+            }        
+        }
+
+
+    </script>
+    <style type="text/css">
+        body {
+            margin: 0px;
+            font-size:30px;
+        }
+
+        #container {
+            width: 100%;
+            margin: 0px;           
+            background-color: #ccc;
+        }
+
+        #image {
+            margin-top: 10px;
+            margin-left: auto;
+            margin-right: auto;
+            border: 0px;
+        }
+
+        #imgcontainer {
+            background-color: #FFF;
+            border: 0px solid #666;
+            text-align: center;
+        }
+
+        input {
+            -webkit-appearance: none;
+        }
+
+        input[type="button"] {
+            background-color: #FF8C00;
+            border: 4px solid #B22222;
+            font-weight: bold;
+            height: 35px;
+            margin: 3px;
+        }
+
+        select {
+            height: 35px;
+            margin: 0 5px 0 0;
+            font-weight: bold;
+        }
+
+        .toolpanel {
+            width: 100%;
+        }
+
+        .toolitem {
+            margin: 4px 4px;
+            float: left;
+            min-width: 200px;
+
+        }    
+                            
+        #msgstep,
+        #msgcalctime,
+        #msgdrawtime {
+            font-size: 10px;
+            display: inline-block;
+            width: 30px;
+        }
+
+        #btnstart,
+        #btnnext,
+        #btnstop {
+            width: 60px;
+        }
+
+        #size,
+        #speed {
+            width: 50px;
+        }
+
+        #models {
+            width: 90px;
+        }
+
+        #patterntype{
+            width: 290px;
+        }
+
+        #pattern {
+            width: 290px;
+        }
+
+        #patterncontainer {
+            width: 289px;
+            height: 289px;
+            background-color: #CCC;
+            border: 1px solid #666;
+            text-align: center;
+        }
+
+        #patterncanvas {
+            margin-left: auto;
+            margin-right: auto;
+            border: 1px;
+        }
+
+        input[type="button"].iconbutton {
+            width: 0px;
+            height: 0px;
+            background-color: transparent;
+            background-repeat: no-repeat;
+            border: 0px;
+            margin: 0px 0px;
+        }
+
+        #btninsert {
+            width: 80px;
+            max-width: 40%;
+            height: 35px;
+            font-size:15px;
+        }
+
+        #txtpattern {
+            height: 0px;
+            width: 0%;
+            background-color: transparent;
+            font-size: 0px;
+            border: none;
+            margin: 0px;
+        }
+
+        .mask {
+            height: 100%;
+            width: 100%;
+            margin: 0;
+            position: fixed;
+            _position: absolute;
+            top: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .poptoolpanel {
+            max-width: 300px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #FFFFFF;
+            border: 1px #000 solid;
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="container">
+
+        <div class="toolpanel" id="toptoolpanel">
+            <div class="toolitem">
+                <b>Simulation Types：</b>
+                <select id="models" name="models">
+                    <option value="clear" selected>None</option>
+                </select>
+                <input id="btninit" type="button" value="Initialization">
+            </div>
+            <div class="toolitem">
+                <b>Operation：</b>
+                <input id="btnstart" type="button" value="Start">
+                
+                <input id="btnstop" type="button" value="Stop">
+            </div>
+            <div style="clear: both;">
+            </div>
+
+            <!-- Size -->
+            <div class="toolitem">
+                <b>Canvas Scale：</b>
+                <select id="size" name="size">
+                    <option value="30">10</option>
+                    <option value="27">9</option>
+                    <option value="24" >8</option>
+                    <option value="21">7</option>
+                    <option value="18"selected>6</option>
+                    <option value="15">5</option>
+                    <option value="12">4</option>
+                    <option value="9">3</option>
+                    <option value="6">2</option>
+                    <option value="3">1</option>
+                </select>
+
+                <!-- Speed-->
+                <b>Motion Speed：</b>
+                <select id="speed" name="speed">
+                    <option value="800">1</option>
+                    <option value="500">2</option>
+                    <option value="300">3</option>
+                    <option value="200">4</option>
+                    <option value="120" selected>5</option>
+                    <option value="75">6</option>
+                    <option value="50">7</option>
+                    <option value="30">8</option>
+                    <option value="10">9</option>
+                    <option value="0">10</option>
+                </select>
+            </div>
+            
+            <div class="toolitem"> 
+                <input id="btnpop" type="button" value="Import Pattern">
+            </div>
+
+            <div style="clear: both;">
+            </div>
+        </div>
+
+        <div id="imgcontainer">
+            <canvas id="image">
+            </canvas>
+        </div>
+
+        <div class="toolpanel">
+        </div>
+    </div>
+
+    <div class="mask">
+        <div class="poptoolpanel">
+            <div class="toolitem">
+                <div>
+                    <b>Choose a moving pattern：</b>
+                </div>
+                
+                <div>
+                    <select id="patterntype" name="patterntype">
+                        </select>
+                </div>                
+                <div id="patterncontainer">
+                    <canvas id="patterncanvas">
+                    </canvas>
+                </div>
+            </div>
+            
+            <div class="toolitem">
+                <div>
+                    <textarea id="txtpattern" style="border-style:none; overflow:hidden" disabled="disabled"></textarea>
+                    
+                </div>
+
+                <div>
+                    <input id="btninsert" style="float: left;" type="button" value="Load">
+                    <div style="clear: both;">
+                    </div>
+                    
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
