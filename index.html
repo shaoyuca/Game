@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -99,18 +100,10 @@
                     $("#container").focus();
                 });
 
-                /*
-                $("#btnnext").click(function () {
-                    calcnext();
-                    draw();
-                    $("#container").focus();
-                });
-                */
 
                 //Start
                 $("#btnstart").click(function () {
                     running = true;
-                    //按钮状态
                     $("#btnstart").prop("disabled", true);
                     //$("#btnnext").prop("disabled", true);
                     $("#btnstop").prop("disabled", false);
@@ -150,24 +143,9 @@
                     showmask();
                 });
 
-                /*
-                $("#btncolor").click(function () {
-                    life_color_cursor++;
-                    if (life_color_cursor >= life_colors.length) life_color_cursor = 0;
-                    life_color = life_colors[life_color_cursor];
-                    $("#btncolor").css("background-color", life_color);
-                    nextgamedata = currentgamedata;
-                    currentgamedata = null;
-
-                    draw();
-                    $("#container").focus();
-                });
-                */
 
                 //patternchange
                 $("#patterntype").change(function () {
-                    //loadpatterntypes($(this).val());
-                    //loadpatternlist($(this).val());
                     $("#txtpattern").val($("#patterntype").val());
                     previewdata = read($("#patterntype").val());
                     drawpatternpreview();
@@ -265,10 +243,8 @@
                                 var patternrowcount = patterndata.length;
                                 var patterncolcount = patterndata[0].length;
 
-                                //inserting img
                                 for (var i = 0; i < Math.min(patternrowcount, rowcount - mouserow); i++) {
                                     for (var j = 0; j < Math.min(patterncolcount, colcount - mousecol); j++) {
-                                        //if (patterndata[i][j] || !transparentinsert)//如果透明则只绘制有生命点，不透明时两者都绘
                                             nextgamedata[mouserow + i][mousecol + j] = patterndata[i][j];
                                     }
                                 }
@@ -617,7 +593,7 @@
             for (var i = 0; i < patterntypes.length; i++) {
                 patterntypelist.options.add(new Option(patterntypes[i].text, patterntypes[i].data));
             }
-            $("#txtpattern").val($("#patterntype").val()); //加载第一个形状
+            $("#txtpattern").val($("#patterntype").val()); 
 
         }
 
@@ -847,7 +823,7 @@
                 <select id="size" name="size">
                     <option value="30">10</option>
                     <option value="27">9</option>
-                    <option value="24" >8</option>
+                    <option value="24">8</option>
                     <option value="21">7</option>
                     <option value="18"selected>6</option>
                     <option value="15">5</option>
@@ -860,11 +836,11 @@
                 <!-- Speed-->
                 <b>Motion Speed：</b>
                 <select id="speed" name="speed">
-                    <option value="800">1</option>
-                    <option value="500">2</option>
+                    <option value="900">1</option>
+                    <option value="600"selected>2</option>
                     <option value="300">3</option>
                     <option value="200">4</option>
-                    <option value="120" selected>5</option>
+                    <option value="120">5</option>
                     <option value="75">6</option>
                     <option value="50">7</option>
                     <option value="30">8</option>
